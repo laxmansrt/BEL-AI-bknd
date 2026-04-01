@@ -8,9 +8,9 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 // ── Config ────────────────────────────────────────────────
-const GROQ_KEY = process.env.GROQ_KEY || '';
+const GEMINI_KEY = process.env.GEMINI_KEY || '';
 const MONGO_URI = process.env.MONGO_URI || '';
-const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
 
 // ── Middleware ────────────────────────────────────────────
 app.use(cors({ origin: '*' }));
@@ -152,13 +152,15 @@ async function dbCheck(res) {
     }
     return true;
 }
-async function groqPost(body) {
-    const r = await fetch(GROQ_URL, {
+async function geminiPost(body) {
+    const r = await fetch(GEMINI_URL, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
+        headers: { 'Authorization': `Bearer ${GEMINI_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
     });
-    return r.json();
+    const result = await r.json();
+    if (result.error) console.error("GEMINI API ERROR:", JSON.stringify(result.error, null, 2));
+    return result;
 }
 
 // ── BLOCKCHAIN HELPERS ─────────────────────────────────────────
@@ -472,7 +474,7 @@ app.post('/api/agribot', async (req, res) => {
         const { lang = 'en', history = [], sessionId } = req.body;
         const systemPrompt = BELAI_SYSTEM[lang] || BELAI_SYSTEM.en;
         const messages = [{ role: 'system', content: systemPrompt }, ...history.slice(-8)];
-        const data = await groqPost({ model: 'llama-3.3-70b-versatile', messages, max_tokens: 512, temperature: 0.7 });
+        const data = await geminiPost({ model: 'gemini-2.5-flash', messages, max_tokens: 512, temperature: 0.7 });
         const reply = data.choices?.[0]?.message?.content || 'Unable to respond.';
         // Save to DB if connected
         if (sessionId && mongoose.connection.readyState === 1) {
@@ -489,7 +491,7 @@ app.post('/api/crop-planner', async (req, res) => {
     try {
         const { district, soil, season, rainfall } = req.body;
         const prompt = `District:${district},Soil:${soil},Season:${season},Rainfall:${rainfall}. Return ONLY valid JSON no markdown: {"crops":[{"name":"...","yield_per_acre":"...","msp_price":"...","water_need":"Low/Medium/High","growth_days":"...","roi_percent":"...","why":"..."}]} with 5 crops.`;
-        const data = await groqPost({ model: 'llama-3.3-70b-versatile', messages: [{ role: 'system', content: 'You are expert Karnataka agronomist.' }, { role: 'user', content: prompt }], max_tokens: 800, temperature: 0.3 });
+        const data = await geminiPost({ model: 'gemini-2.5-flash', messages: [{ role: 'system', content: 'You are expert Karnataka agronomist.' }, { role: 'user', content: prompt }], max_tokens: 800, temperature: 0.3 });
         const txt = data.choices?.[0]?.message?.content || '';
         const m = txt.match(/\{[\s\S]*\}/);
         if (m) res.json(JSON.parse(m[0]));
@@ -497,28 +499,32 @@ app.post('/api/crop-planner', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── DISEASE DETECTION (ML SERVICE) ─────────────────────────
+// ── DISEASE DETECTION (GEMINI 1.5 PRO) ─────────────────────
 app.post('/api/disease', async (req, res) => {
     try {
         const { imageBase64 } = req.body;
         if (!imageBase64) return res.status(400).json({ error: 'imageBase64 required' });
 
-        // Forward the image to our dedicated Python AI Model (MobileNetV2 CNN)
-        const mlResponse = await fetch('http://localhost:8000/predict', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imageBase64 })
-        });
+        const prompt = "You are an expert plant pathologist. Analyze this leaf image. Output ONLY valid JSON, no markdown formatting. Format: {\"disease\":\"Name of disease or Healthy\",\"confidence\":0.0 to 1.0,\"cure\":\"Short advice or n/a\"}";
+        const messages = [{
+            role: 'user',
+            content: [
+                { type: 'text', text: prompt },
+                { type: 'image_url', image_url: { url: imageBase64 } }
+            ]
+        }];
 
-        if (!mlResponse.ok) {
-            const errText = await mlResponse.text();
-            throw new Error(`ML Service Error: ${errText}`);
+        const data = await geminiPost({ model: 'gemini-2.5-flash', messages, max_tokens: 250 });
+        const txt = data.choices?.[0]?.message?.content || '';
+        const m = txt.match(/\{[\s\S]*\}/);
+        
+        if (m) {
+            res.json(JSON.parse(m[0]));
+        } else {
+            res.status(422).json({ error: 'Could not parse AI response', raw: txt });
         }
-
-        const result = await mlResponse.json();
-        res.json(result);
     } catch (e) {
-        res.status(500).json({ error: e.message, info: 'Make sure the Python ML service is running on port 8000.' });
+        res.status(500).json({ error: e.message });
     }
 });
 
@@ -532,8 +538,8 @@ app.post('/api/food-label', async (req, res) => {
         } else if (imageBase64) {
             messages = [{ role: 'user', content: [{ type: 'text', text: 'Read food label. Return ONLY JSON: {"productName":"...","brand":"...","mfgDate":"YYYY-MM-DD","expiryDate":"YYYY-MM-DD","batchNo":"...","daysUntilExpiry":100}' }, { type: 'image_url', image_url: { url: imageBase64 } }] }];
         } else return res.status(400).json({ error: 'imageBase64 or barcodeText required' });
-        const model = imageBase64 ? 'meta-llama/llama-4-scout-17b-16e-instruct' : 'llama-3.3-70b-versatile';
-        const data = await groqPost({ model, messages, max_tokens: 300 });
+        const model = 'gemini-2.5-flash';
+        const data = await geminiPost({ model, messages, max_tokens: 300 });
         const txt = data.choices?.[0]?.message?.content || '';
         const m = txt.match(/\{[\s\S]*\}/);
         if (m) res.json(JSON.parse(m[0]));
