@@ -204,6 +204,9 @@ async function createLedgerBlock({ orderId, productName='Crop', farmerName='Farm
 // ═══════════════════════════════════════════════════════════
 
 // Health
+app.get('/', (_req, res) => {
+    res.send('<h1>✅ BELAI Backend API is successfully running!</h1><p>Visit <code>/api/health</code> to check system status.</p>');
+});
 app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', service: 'BELAI Backend', db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected', time: new Date().toISOString() });
 });
