@@ -16,14 +16,25 @@ const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '10mb' }));
 
-// ── MongoDB Connection ────────────────────────────────────
-if (MONGO_URI) {
-    mongoose.connect(MONGO_URI)
-        .then(() => console.log('  MongoDB connected'))
-        .catch(err => console.error('  MongoDB error:', err.message));
-} else {
-    console.warn('  MONGO_URI not set — DB features disabled');
+// ── MongoDB Connection (Vercel serverless lazy-cached pattern) ────
+let _mongoPromise = null;
+async function connectDB() {
+    if (mongoose.connection.readyState === 1) return; // already connected
+    if (!MONGO_URI) return;
+    if (!_mongoPromise) {
+        _mongoPromise = mongoose.connect(MONGO_URI, {
+            serverSelectionTimeoutMS: 10000,
+            socketTimeoutMS: 30000,
+        }).then(() => {
+            console.log('  MongoDB connected');
+        }).catch(err => {
+            console.error('  MongoDB error:', err.message);
+            _mongoPromise = null; // allow retry on next request
+        });
+    }
+    await _mongoPromise;
 }
+if (MONGO_URI) { connectDB(); } else { console.warn('  MONGO_URI not set — DB features disabled'); }
 
 // ═══════════════════════════════════════════════════════════
 //  MONGOOSE MODELS
@@ -133,7 +144,8 @@ const Chat = mongoose.model('Chat', ChatSchema);
 // ═══════════════════════════════════════════════════════════
 //  HELPER
 // ═══════════════════════════════════════════════════════════
-function dbCheck(res) {
+async function dbCheck(res) {
+    await connectDB();
     if (mongoose.connection.readyState !== 1) {
         res.status(503).json({ error: 'Database not connected. Set MONGO_URI in .env' });
         return false;
@@ -207,13 +219,15 @@ async function createLedgerBlock({ orderId, productName='Crop', farmerName='Farm
 app.get('/', (_req, res) => {
     res.send('<h1>✅ BELAI Backend API is successfully running!</h1><p>Visit <code>/api/health</code> to check system status.</p>');
 });
-app.get('/api/health', (_req, res) => {
+app.get('/api/health', async (_req, res) => {
+    await connectDB();
     res.json({ status: 'ok', service: 'BELAI Backend', db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected', time: new Date().toISOString() });
 });
 
 // ── LEDGER / BLOCKCHAIN ────────────────────────────────────────
 app.get('/api/ledger/order/:orderId', async (req, res) => {
     try {
+        await connectDB();
         const { orderId } = req.params;
         if (mongoose.connection.readyState !== 1) return res.json({ blocks: simulateLedger(orderId) });
         const blocks = await LedgerBlock.find({ orderId }).sort({ blockNumber: 1 });
@@ -225,6 +239,7 @@ app.get('/api/ledger/search', async (req, res) => {
     const { orderId } = req.query;
     if (!orderId) return res.status(400).json({ error: 'orderId query param required' });
     try {
+        await connectDB();
         if (mongoose.connection.readyState !== 1) return res.json({ blocks: simulateLedger(orderId) });
         const blocks = await LedgerBlock.find({ orderId }).sort({ blockNumber: 1 });
         res.json({ blocks: blocks.length ? blocks : simulateLedger(orderId) });
@@ -233,7 +248,7 @@ app.get('/api/ledger/search', async (req, res) => {
 
 // ── AUTH ──────────────────────────────────────────────────
 app.post('/api/auth/register', async (req, res) => {
-    if (!dbCheck(res)) return;
+    if (!await dbCheck(res)) return;
     try {
         const existing = await User.findOne({ email: req.body.email });
         if (existing) return res.status(400).json({ error: 'User already exists' });
@@ -243,7 +258,7 @@ app.post('/api/auth/register', async (req, res) => {
 });
 
 app.post('/api/auth/login', async (req, res) => {
-    if (!dbCheck(res)) return;
+    if (!await dbCheck(res)) return;
     try {
         const user = await User.findOne({ email: req.body.email });
         if (!user || user.password !== req.body.password) return res.status(401).json({ error: 'Invalid credentials' });
@@ -291,7 +306,7 @@ app.post('/api/auth/google', async (req, res) => {
 });
 
 app.post('/api/auth/reset-password', async (req, res) => {
-    if (!dbCheck(res)) return;
+    if (!await dbCheck(res)) return;
     try {
         const { email, newPassword } = req.body;
         if (!email || !newPassword) return res.status(400).json({ error: 'Email and new password required' });
@@ -305,7 +320,7 @@ app.post('/api/auth/reset-password', async (req, res) => {
 
 // ── LISTINGS ──────────────────────────────────────────────
 app.get('/api/listings', async (_req, res) => {
-    if (!dbCheck(res)) return;
+    if (!await dbCheck(res)) return;
     try {
         const listings = await Listing.find({ active: true }).sort({ createdAt: -1 }).limit(100);
         res.json(listings);
@@ -313,7 +328,7 @@ app.get('/api/listings', async (_req, res) => {
 });
 
 app.post('/api/listings', async (req, res) => {
-    if (!dbCheck(res)) return;
+    if (!await dbCheck(res)) return;
     try {
         const listing = await Listing.create(req.body);
         res.status(201).json(listing);
@@ -321,7 +336,7 @@ app.post('/api/listings', async (req, res) => {
 });
 
 app.delete('/api/listings/:id', async (req, res) => {
-    if (!dbCheck(res)) return;
+    if (!await dbCheck(res)) return;
     try {
         await Listing.findByIdAndUpdate(req.params.id, { active: false });
         res.json({ success: true });
@@ -330,7 +345,7 @@ app.delete('/api/listings/:id', async (req, res) => {
 
 // ── BOOKINGS ──────────────────────────────────────────────
 app.get('/api/bookings', async (req, res) => {
-    if (!dbCheck(res)) return;
+    if (!await dbCheck(res)) return;
     try {
         const q = req.query.phone ? { farmerPhone: req.query.phone } : {};
         const bookings = await Booking.find(q).sort({ createdAt: -1 });
@@ -339,7 +354,7 @@ app.get('/api/bookings', async (req, res) => {
 });
 
 app.post('/api/bookings', async (req, res) => {
-    if (!dbCheck(res)) return;
+    if (!await dbCheck(res)) return;
     try {
         const booking = await Booking.create(req.body);
         res.status(201).json(booking);
@@ -347,7 +362,7 @@ app.post('/api/bookings', async (req, res) => {
 });
 
 app.patch('/api/bookings/:id/status', async (req, res) => {
-    if (!dbCheck(res)) return;
+    if (!await dbCheck(res)) return;
     try {
         const b = await Booking.findByIdAndUpdate(req.params.id, { status: req.body.status }, { new: true });
         res.json(b);
@@ -375,7 +390,7 @@ app.get('/api/market-prices', async (req, res) => {
 });
 
 app.post('/api/market-prices', async (req, res) => {
-    if (!dbCheck(res)) return;
+    if (!await dbCheck(res)) return;
     try {
         const mp = await MarketPrice.create(req.body);
         res.status(201).json(mp);
@@ -383,7 +398,7 @@ app.post('/api/market-prices', async (req, res) => {
 });
 
 app.patch('/api/market-prices/:id/confirm', async (req, res) => {
-    if (!dbCheck(res)) return;
+    if (!await dbCheck(res)) return;
     try {
         const mp = await MarketPrice.findByIdAndUpdate(req.params.id, { $inc: { confirms: 1 } }, { new: true });
         res.json(mp);
@@ -392,7 +407,7 @@ app.patch('/api/market-prices/:id/confirm', async (req, res) => {
 
 // ── DELIVERIES ────────────────────────────────────────────
 app.get('/api/deliveries', async (_req, res) => {
-    if (!dbCheck(res)) return;
+    if (!await dbCheck(res)) return;
     try {
         const deliveries = await Delivery.find().sort({ createdAt: -1 }).limit(50);
         res.json(deliveries);
@@ -400,7 +415,7 @@ app.get('/api/deliveries', async (_req, res) => {
 });
 
 app.post('/api/deliveries', async (req, res) => {
-    if (!dbCheck(res)) return;
+    if (!await dbCheck(res)) return;
     try {
         const orderId = 'ORD' + Date.now();
         const delivery = await Delivery.create({ ...req.body, orderId });
@@ -417,7 +432,7 @@ app.post('/api/deliveries', async (req, res) => {
 });
 
 app.patch('/api/deliveries/:id/step', async (req, res) => {
-    if (!dbCheck(res)) return;
+    if (!await dbCheck(res)) return;
     try {
         const d = await Delivery.findByIdAndUpdate(req.params.id, { currentStep: req.body.step, status: req.body.status }, { new: true });
         // Chain a new ledger block for every status change
@@ -436,7 +451,7 @@ app.patch('/api/deliveries/:id/step', async (req, res) => {
 
 // ── CHAT HISTORY ──────────────────────────────────────────
 app.get('/api/chat-history/:sessionId', async (req, res) => {
-    if (!dbCheck(res)) return;
+    if (!await dbCheck(res)) return;
     try {
         const history = await Chat.find({ sessionId: req.params.sessionId }).sort({ createdAt: 1 }).limit(30);
         res.json(history);
