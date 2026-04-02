@@ -474,7 +474,7 @@ app.post('/api/agribot', async (req, res) => {
         const { lang = 'en', history = [], sessionId } = req.body;
         const systemPrompt = BELAI_SYSTEM[lang] || BELAI_SYSTEM.en;
         const messages = [{ role: 'system', content: systemPrompt }, ...history.slice(-8)];
-        const data = await geminiPost({ model: 'gemini-2.5-flash', messages, max_tokens: 512, temperature: 0.7 });
+        const data = await geminiPost({ model: 'gemini-1.5-flash', messages, max_tokens: 512, temperature: 0.7 });
         const reply = data.choices?.[0]?.message?.content || 'Unable to respond.';
         // Save to DB if connected
         if (sessionId && mongoose.connection.readyState === 1) {
@@ -491,7 +491,7 @@ app.post('/api/crop-planner', async (req, res) => {
     try {
         const { district, soil, season, rainfall } = req.body;
         const prompt = `District:${district},Soil:${soil},Season:${season},Rainfall:${rainfall}. Return ONLY valid JSON no markdown: {"crops":[{"name":"...","yield_per_acre":"...","msp_price":"...","water_need":"Low/Medium/High","growth_days":"...","roi_percent":"...","why":"..."}]} with 5 crops.`;
-        const data = await geminiPost({ model: 'gemini-2.5-flash', messages: [{ role: 'system', content: 'You are expert Karnataka agronomist.' }, { role: 'user', content: prompt }], max_tokens: 800, temperature: 0.3 });
+        const data = await geminiPost({ model: 'gemini-1.5-flash', messages: [{ role: 'system', content: 'You are expert Karnataka agronomist.' }, { role: 'user', content: prompt }], max_tokens: 800, temperature: 0.3 });
         let txt = data.choices?.[0]?.message?.content || '';
         txt = txt.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
         const m = txt.match(/\{[\s\S]*\}/);
@@ -523,7 +523,8 @@ app.post('/api/disease', async (req, res) => {
             ]
         }];
 
-        const data = await geminiPost({ model: 'gemini-2.5-flash', messages, max_tokens: 1000 });
+        const data = await geminiPost({ model: 'gemini-1.5-flash', messages, max_tokens: 1000 });
+        console.log("GEMINI RAW:", JSON.stringify(data, null, 2));
         let txt = data.choices?.[0]?.message?.content || '';
         const cleanTxt = txt.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
 
@@ -561,7 +562,7 @@ app.post('/api/food-label', async (req, res) => {
         } else if (imageBase64) {
             messages = [{ role: 'user', content: [{ type: 'text', text: 'Read food label. Return ONLY JSON: {"productName":"...","brand":"...","mfgDate":"YYYY-MM-DD","expiryDate":"YYYY-MM-DD","batchNo":"...","daysUntilExpiry":100}' }, { type: 'image_url', image_url: { url: imageBase64 } }] }];
         } else return res.status(400).json({ error: 'imageBase64 or barcodeText required' });
-        const model = 'gemini-2.5-flash';
+        const model = 'gemini-1.5-flash';
         const data = await geminiPost({ model, messages, max_tokens: 300 });
         let txt = data.choices?.[0]?.message?.content || '';
         txt = txt.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
