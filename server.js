@@ -492,10 +492,18 @@ app.post('/api/crop-planner', async (req, res) => {
         const { district, soil, season, rainfall } = req.body;
         const prompt = `District:${district},Soil:${soil},Season:${season},Rainfall:${rainfall}. Return ONLY valid JSON no markdown: {"crops":[{"name":"...","yield_per_acre":"...","msp_price":"...","water_need":"Low/Medium/High","growth_days":"...","roi_percent":"...","why":"..."}]} with 5 crops.`;
         const data = await geminiPost({ model: 'gemini-2.5-flash', messages: [{ role: 'system', content: 'You are expert Karnataka agronomist.' }, { role: 'user', content: prompt }], max_tokens: 800, temperature: 0.3 });
-        const txt = data.choices?.[0]?.message?.content || '';
+        let txt = data.choices?.[0]?.message?.content || '';
+        txt = txt.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
         const m = txt.match(/\{[\s\S]*\}/);
-        if (m) res.json(JSON.parse(m[0]));
-        else res.status(422).json({ error: 'Could not parse AI response', raw: txt });
+        if (m) {
+            try {
+                res.json(JSON.parse(m[0]));
+            } catch (err) {
+                res.status(422).json({ error: 'JSON parse error', raw: txt });
+            }
+        } else {
+            res.status(422).json({ error: 'Could not parse AI response', raw: txt });
+        }
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -526,11 +534,16 @@ Rules:
         }];
 
         const data = await geminiPost({ model: 'gemini-2.5-flash', messages, max_tokens: 900 });
-        const txt = data.choices?.[0]?.message?.content || '';
+        let txt = data.choices?.[0]?.message?.content || '';
+        txt = txt.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
         const m = txt.match(/\{[\s\S]*\}/);
 
         if (m) {
-            res.json(JSON.parse(m[0]));
+            try {
+                res.json(JSON.parse(m[0]));
+            } catch (err) {
+                res.status(422).json({ error: 'JSON parse error', raw: txt });
+            }
         } else {
             res.status(422).json({ error: 'Could not parse AI response', raw: txt });
         }
@@ -551,10 +564,18 @@ app.post('/api/food-label', async (req, res) => {
         } else return res.status(400).json({ error: 'imageBase64 or barcodeText required' });
         const model = 'gemini-2.5-flash';
         const data = await geminiPost({ model, messages, max_tokens: 300 });
-        const txt = data.choices?.[0]?.message?.content || '';
+        let txt = data.choices?.[0]?.message?.content || '';
+        txt = txt.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
         const m = txt.match(/\{[\s\S]*\}/);
-        if (m) res.json(JSON.parse(m[0]));
-        else res.status(422).json({ error: 'Parse failed', raw: txt });
+        if (m) {
+            try {
+                res.json(JSON.parse(m[0]));
+            } catch (err) {
+                res.status(422).json({ error: 'JSON parse error', raw: txt });
+            }
+        } else {
+            res.status(422).json({ error: 'Parse failed', raw: txt });
+        }
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
