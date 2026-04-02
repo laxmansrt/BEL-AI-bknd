@@ -542,10 +542,10 @@ Rules:
             try {
                 res.json(JSON.parse(m[0]));
             } catch (err) {
-                res.status(422).json({ error: 'JSON parse error', raw: txt });
+                res.status(422).json({ error: 'JSON parse error', raw: txt, api_error: data.error || null });
             }
         } else {
-            res.status(422).json({ error: 'Could not parse AI response', raw: txt });
+            res.status(422).json({ error: 'Could not parse AI response', raw: txt, api_error: data.error || null });
         }
     } catch (e) {
         res.status(500).json({ error: e.message });
