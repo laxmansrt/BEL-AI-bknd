@@ -499,13 +499,24 @@ app.post('/api/crop-planner', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── DISEASE DETECTION (GEMINI 1.5 PRO) ─────────────────────
+// ── DISEASE DETECTION (GEMINI 2.5 FLASH VISION — REAL TIME) ─────────────────────
 app.post('/api/disease', async (req, res) => {
     try {
         const { imageBase64 } = req.body;
         if (!imageBase64) return res.status(400).json({ error: 'imageBase64 required' });
 
-        const prompt = "You are an expert plant pathologist. Analyze this leaf image. Output ONLY valid JSON, no markdown formatting. Format: {\"disease\":\"Name of disease or Healthy\",\"confidence\":0.0 to 1.0,\"cure\":\"Short advice or n/a\"}";
+        const prompt = `You are an expert plant pathologist with 20+ years experience. Analyze THIS specific plant/leaf image carefully and provide a REAL, image-specific diagnosis.
+
+Return ONLY a valid JSON object, no markdown, no code fences. Schema:
+{"disease_name":"exact disease or Healthy Plant","scientific_name":"pathogen scientific name or N/A","confidence_percent":88,"severity":"Mild or Moderate or Severe or Critical or Healthy","affected_area_percent":25,"cause":"what caused this","symptoms_observed":"exactly what you see in this specific image","treatment_steps":["step1","step2","step3","step4"],"pesticides":[{"name":"product","dosage":"2g/L","frequency":"every 7 days"},{"name":"alternative","dosage":"3g/L","frequency":"weekly"}],"organic_alternatives":"neem/organic option","prevention_tips":"prevention advice"}
+
+Rules:
+- Base diagnosis ONLY on what you actually see in this image
+- Every image must produce a different, accurate result
+- If plant looks healthy, set disease_name to "Healthy Plant" and severity to "Healthy"
+- confidence_percent must reflect your actual confidence (50-99)
+- affected_area_percent must reflect actual visible damage (0 if healthy)`;
+
         const messages = [{
             role: 'user',
             content: [
@@ -514,10 +525,10 @@ app.post('/api/disease', async (req, res) => {
             ]
         }];
 
-        const data = await geminiPost({ model: 'gemini-2.5-flash', messages, max_tokens: 250 });
+        const data = await geminiPost({ model: 'gemini-2.5-flash', messages, max_tokens: 900 });
         const txt = data.choices?.[0]?.message?.content || '';
         const m = txt.match(/\{[\s\S]*\}/);
-        
+
         if (m) {
             res.json(JSON.parse(m[0]));
         } else {
