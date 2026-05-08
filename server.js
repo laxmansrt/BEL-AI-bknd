@@ -8,9 +8,15 @@ const app = express();
 const PORT = process.env.PORT || 4000;
 
 // ── Config ────────────────────────────────────────────────
-const GEMINI_KEY = process.env.GEMINI_KEY || '';
+const GROQ_KEY = process.env.GROQ_KEY || process.env.GEMINI_KEY || '';
 const MONGO_URI = process.env.MONGO_URI || '';
-const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
+const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_WHISPER_URL = 'https://api.groq.com/openai/v1/audio/transcriptions';
+
+// Models
+const MODEL_TEXT   = 'llama-3.3-70b-versatile';           // text chat / planner
+const MODEL_VISION = 'meta-llama/llama-4-scout-17b-16e-instruct'; // disease / food label
+const MODEL_WHISPER = 'whisper-large-v3-turbo';           // voice transcription
 
 // ── Middleware ────────────────────────────────────────────
 app.use(cors({ origin: '*' }));
@@ -152,15 +158,31 @@ async function dbCheck(res) {
     }
     return true;
 }
-async function geminiPost(body) {
-    const r = await fetch(GEMINI_URL, {
+async function groqPost(body) {
+    const r = await fetch(GROQ_URL, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${GEMINI_KEY}`, 'Content-Type': 'application/json' },
+        headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
     });
     const result = await r.json();
-    if (result.error) console.error("GEMINI API ERROR:", JSON.stringify(result.error, null, 2));
+    if (result.error) console.error('GROQ API ERROR:', JSON.stringify(result.error, null, 2));
     return result;
+}
+
+// Whisper transcription for voice notes (WhatsApp / Voice Call)
+async function whisperTranscribe(audioBuffer, mimeType) {
+    const FormData = (await import('form-data')).default;
+    const form = new FormData();
+    form.append('file', Buffer.from(audioBuffer), { filename: 'audio.ogg', contentType: mimeType || 'audio/ogg' });
+    form.append('model', MODEL_WHISPER);
+    form.append('language', 'en');
+    const r = await fetch(GROQ_WHISPER_URL, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${GROQ_KEY}`, ...form.getHeaders() },
+        body: form.getBuffer(),
+    });
+    const result = await r.json();
+    return result.text || '';
 }
 
 // ── BLOCKCHAIN HELPERS ─────────────────────────────────────────
@@ -474,7 +496,7 @@ app.post('/api/agribot', async (req, res) => {
         const { lang = 'en', history = [], sessionId } = req.body;
         const systemPrompt = BELAI_SYSTEM[lang] || BELAI_SYSTEM.en;
         const messages = [{ role: 'system', content: systemPrompt }, ...history.slice(-8)];
-        const data = await geminiPost({ model: 'gemini-1.5-flash', messages, max_tokens: 512, temperature: 0.7 });
+        const data = await groqPost({ model: MODEL_TEXT, messages, max_tokens: 512, temperature: 0.7 });
         const reply = data.choices?.[0]?.message?.content || 'Unable to respond.';
         // Save to DB if connected
         if (sessionId && mongoose.connection.readyState === 1) {
@@ -491,7 +513,7 @@ app.post('/api/crop-planner', async (req, res) => {
     try {
         const { district, soil, season, rainfall } = req.body;
         const prompt = `District:${district},Soil:${soil},Season:${season},Rainfall:${rainfall}. Return ONLY valid JSON no markdown: {"crops":[{"name":"...","yield_per_acre":"...","msp_price":"...","water_need":"Low/Medium/High","growth_days":"...","roi_percent":"...","why":"..."}]} with 5 crops.`;
-        const data = await geminiPost({ model: 'gemini-1.5-flash', messages: [{ role: 'system', content: 'You are expert Karnataka agronomist.' }, { role: 'user', content: prompt }], max_tokens: 800, temperature: 0.3 });
+        const data = await groqPost({ model: MODEL_TEXT, messages: [{ role: 'system', content: 'You are expert Karnataka agronomist.' }, { role: 'user', content: prompt }], max_tokens: 800, temperature: 0.3 });
         let txt = data.choices?.[0]?.message?.content || '';
         txt = txt.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
         const m = txt.match(/\{[\s\S]*\}/);
@@ -523,8 +545,8 @@ app.post('/api/disease', async (req, res) => {
             ]
         }];
 
-        const data = await geminiPost({ model: 'gemini-1.5-flash', messages, max_tokens: 1000 });
-        console.log("GEMINI RAW:", JSON.stringify(data, null, 2));
+        const data = await groqPost({ model: MODEL_VISION, messages, max_tokens: 1000 });
+        console.log('GROQ VISION RAW:', JSON.stringify(data, null, 2));
         let txt = data.choices?.[0]?.message?.content || '';
         const cleanTxt = txt.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
 
@@ -562,8 +584,8 @@ app.post('/api/food-label', async (req, res) => {
         } else if (imageBase64) {
             messages = [{ role: 'user', content: [{ type: 'text', text: 'Read food label. Return ONLY JSON: {"productName":"...","brand":"...","mfgDate":"YYYY-MM-DD","expiryDate":"YYYY-MM-DD","batchNo":"...","daysUntilExpiry":100}' }, { type: 'image_url', image_url: { url: imageBase64 } }] }];
         } else return res.status(400).json({ error: 'imageBase64 or barcodeText required' });
-        const model = 'gemini-1.5-flash';
-        const data = await geminiPost({ model, messages, max_tokens: 300 });
+        const model = MODEL_VISION;
+        const data = await groqPost({ model, messages, max_tokens: 300 });
         let txt = data.choices?.[0]?.message?.content || '';
         txt = txt.replace(/```(?:json)?\s*/gi, '').replace(/```/g, '').trim();
         const m = txt.match(/\{[\s\S]*\}/);
@@ -618,33 +640,21 @@ app.post('/api/voice/respond', async (req, res) => {
         // Transcribe via Twilio's built-in or Gemini
         if (TWILIO_SID && TWILIO_TOKEN && recordingUrl) {
             try {
-                // Download audio and send to Gemini for transcription (multimodal)
+                // Download audio and transcribe with Whisper
                 const audioRes = await fetch(recordingUrl + '.wav', {
                     headers: { 'Authorization': 'Basic ' + Buffer.from(`${TWILIO_SID}:${TWILIO_TOKEN}`).toString('base64') }
                 });
                 const audioBuffer = await audioRes.arrayBuffer();
-                const audioBase64 = Buffer.from(audioBuffer).toString('base64');
-
-                const transcribeData = await geminiPost({
-                    model: 'gemini-1.5-flash',
-                    messages: [{
-                        role: 'user',
-                        content: [
-                            { type: 'text', text: 'This is an audio recording of an Indian farmer asking a question in Kannada, Hindi, or English. Please transcribe what they said in English.' },
-                            { type: 'image_url', image_url: { url: `data:audio/wav;base64,${audioBase64}` } }
-                        ]
-                    }],
-                    max_tokens: 200
-                });
-                farmerText = transcribeData.choices?.[0]?.message?.content || farmerText;
+                const transcribed = await whisperTranscribe(audioBuffer, 'audio/wav');
+                if (transcribed) farmerText = transcribed;
             } catch (transcribeErr) {
                 console.warn('Transcription fallback:', transcribeErr.message);
             }
         }
 
         // Get AI answer
-        const aiData = await geminiPost({
-            model: 'gemini-1.5-flash',
+        const aiData = await groqPost({
+            model: MODEL_TEXT,
             messages: [
                 { role: 'system', content: BELAI_SYSTEM.en + ' Keep response under 60 words, simple spoken language.' },
                 { role: 'user', content: farmerText }
@@ -701,22 +711,11 @@ app.post('/api/whatsapp', async (req, res) => {
                 headers: { 'Authorization': 'Basic ' + Buffer.from(`${TWILIO_SID}:${TWILIO_TOKEN}`).toString('base64') }
             });
             const audioBuffer = await audioRes.arrayBuffer();
-            const audioBase64 = Buffer.from(audioBuffer).toString('base64');
             const mimeType = mediaType.split(';')[0];
 
-            const transcribeData = await geminiPost({
-                model: 'gemini-1.5-flash',
-                messages: [{
-                    role: 'user',
-                    content: [
-                        { type: 'text', text: 'An Indian farmer sent this voice message in Kannada, Hindi, Telugu, or English. Transcribe it in English.' },
-                        { type: 'image_url', image_url: { url: `data:${mimeType};base64,${audioBase64}` } }
-                    ]
-                }],
-                max_tokens: 200
-            });
-            farmerQuestion = transcribeData.choices?.[0]?.message?.content
-                || 'Tell me about farming tips.';
+            // Transcribe with Groq Whisper
+            const transcribed = await whisperTranscribe(audioBuffer, mimeType);
+            farmerQuestion = transcribed || 'Tell me about farming tips.';
         } catch (err) {
             console.warn('WhatsApp audio transcription error:', err.message);
             farmerQuestion = 'Tell me about farming tips for Karnataka.';
@@ -734,8 +733,8 @@ app.post('/api/whatsapp', async (req, res) => {
 
     try {
         // Get AI reply
-        const aiData = await geminiPost({
-            model: 'gemini-1.5-flash',
+        const aiData = await groqPost({
+            model: MODEL_TEXT,
             messages: [
                 { role: 'system', content: BELAI_SYSTEM.en + ' Keep response under 150 words. Use simple language for WhatsApp. Use emojis.' },
                 { role: 'user', content: farmerQuestion }
