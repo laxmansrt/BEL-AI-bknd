@@ -579,9 +579,201 @@ app.post('/api/food-label', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ══════════════════════════════════════════════════════════
+//  OPTION 1: TWILIO AI VOICE CALL (IVR)
+//  Flow: Farmer calls number → AI greets → Farmer speaks →
+//        Gemini answers → spoken back to farmer via TTS
+//  Requires: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN in .env
+// ══════════════════════════════════════════════════════════
+
+// Twilio sends XML (TwiML) instructions — need urlencoded body parser
+app.use('/api/voice', express.urlencoded({ extended: false }));
+
+// Step 1: Twilio calls this when farmer dials your number
+app.post('/api/voice/incoming', (req, res) => {
+    const lang = req.body.To?.includes('kn') ? 'kn' : 'en'; // detect lang from number if configured
+    const greet = {
+        kn: 'Namaskara! Nanu BELAI — nimage bele sahaya maduttene. Nimage yaava prashne ide?',
+        hi: 'Namaste! Main BELAI hoon — aapka krishi sahayak. Kya poochna chahte hain?',
+        en: 'Hello! I am BELAI, your farming assistant. Please speak your farming question after the beep.',
+    };
+    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Aditi" language="en-IN">${greet[lang] || greet.en}</Say>
+  <Record action="/api/voice/respond" method="POST" maxLength="30" timeout="5" transcribe="false" playBeep="true"/>
+  <Say voice="Polly.Aditi">Sorry, I did not hear you. Please call again.</Say>
+</Response>`;
+    res.type('text/xml').send(twiml);
+});
+
+// Step 2: Twilio sends the recorded audio URL — we transcribe + answer
+app.post('/api/voice/respond', async (req, res) => {
+    try {
+        const recordingUrl = req.body.RecordingUrl;
+        const TWILIO_SID   = process.env.TWILIO_ACCOUNT_SID;
+        const TWILIO_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+
+        let farmerText = 'Tell me about crop diseases and how to treat them.'; // fallback
+
+        // Transcribe via Twilio's built-in or Gemini
+        if (TWILIO_SID && TWILIO_TOKEN && recordingUrl) {
+            try {
+                // Download audio and send to Gemini for transcription (multimodal)
+                const audioRes = await fetch(recordingUrl + '.wav', {
+                    headers: { 'Authorization': 'Basic ' + Buffer.from(`${TWILIO_SID}:${TWILIO_TOKEN}`).toString('base64') }
+                });
+                const audioBuffer = await audioRes.arrayBuffer();
+                const audioBase64 = Buffer.from(audioBuffer).toString('base64');
+
+                const transcribeData = await geminiPost({
+                    model: 'gemini-1.5-flash',
+                    messages: [{
+                        role: 'user',
+                        content: [
+                            { type: 'text', text: 'This is an audio recording of an Indian farmer asking a question in Kannada, Hindi, or English. Please transcribe what they said in English.' },
+                            { type: 'image_url', image_url: { url: `data:audio/wav;base64,${audioBase64}` } }
+                        ]
+                    }],
+                    max_tokens: 200
+                });
+                farmerText = transcribeData.choices?.[0]?.message?.content || farmerText;
+            } catch (transcribeErr) {
+                console.warn('Transcription fallback:', transcribeErr.message);
+            }
+        }
+
+        // Get AI answer
+        const aiData = await geminiPost({
+            model: 'gemini-1.5-flash',
+            messages: [
+                { role: 'system', content: BELAI_SYSTEM.en + ' Keep response under 60 words, simple spoken language.' },
+                { role: 'user', content: farmerText }
+            ],
+            max_tokens: 200,
+            temperature: 0.7
+        });
+        const reply = (aiData.choices?.[0]?.message?.content || 'I could not understand. Please try again.')
+            .replace(/[*#_`]/g, ''); // strip markdown for speech
+
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Aditi" language="en-IN">${reply}</Say>
+  <Say voice="Polly.Aditi" language="en-IN">Do you have another question? Please call again. Thank you for using BELAI.</Say>
+</Response>`;
+        res.type('text/xml').send(twiml);
+    } catch (e) {
+        console.error('Voice respond error:', e.message);
+        const errTwiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="Polly.Aditi">Sorry, there was an error. Please call again.</Say>
+</Response>`;
+        res.type('text/xml').send(errTwiml);
+    }
+});
+
+// ══════════════════════════════════════════════════════════
+//  OPTION 2: WHATSAPP VOICE MESSAGE AI BOT
+//  Flow: Farmer sends WhatsApp voice note → Twilio webhook →
+//        Backend downloads audio → Gemini transcribes →
+//        Gemini answers → Text reply sent to farmer WhatsApp
+//  Requires: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN in .env
+//  Setup: Point Twilio WhatsApp sandbox webhook to /api/whatsapp
+// ══════════════════════════════════════════════════════════
+
+app.use('/api/whatsapp', express.urlencoded({ extended: false }));
+
+app.post('/api/whatsapp', async (req, res) => {
+    const TWILIO_SID   = process.env.TWILIO_ACCOUNT_SID;
+    const TWILIO_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+
+    const fromNumber  = req.body.From || '';        // e.g. whatsapp:+919876543210
+    const bodyText    = (req.body.Body || '').trim();
+    const numMedia    = parseInt(req.body.NumMedia || '0');
+    const mediaUrl    = req.body.MediaUrl0 || '';   // audio file URL if voice note
+    const mediaType   = req.body.MediaContentType0 || '';
+
+    let farmerQuestion = bodyText;
+
+    // If voice note received → transcribe it
+    if (numMedia > 0 && mediaType.startsWith('audio') && mediaUrl && TWILIO_SID) {
+        try {
+            const audioRes = await fetch(mediaUrl, {
+                headers: { 'Authorization': 'Basic ' + Buffer.from(`${TWILIO_SID}:${TWILIO_TOKEN}`).toString('base64') }
+            });
+            const audioBuffer = await audioRes.arrayBuffer();
+            const audioBase64 = Buffer.from(audioBuffer).toString('base64');
+            const mimeType = mediaType.split(';')[0];
+
+            const transcribeData = await geminiPost({
+                model: 'gemini-1.5-flash',
+                messages: [{
+                    role: 'user',
+                    content: [
+                        { type: 'text', text: 'An Indian farmer sent this voice message in Kannada, Hindi, Telugu, or English. Transcribe it in English.' },
+                        { type: 'image_url', image_url: { url: `data:${mimeType};base64,${audioBase64}` } }
+                    ]
+                }],
+                max_tokens: 200
+            });
+            farmerQuestion = transcribeData.choices?.[0]?.message?.content
+                || 'Tell me about farming tips.';
+        } catch (err) {
+            console.warn('WhatsApp audio transcription error:', err.message);
+            farmerQuestion = 'Tell me about farming tips for Karnataka.';
+        }
+    }
+
+    if (!farmerQuestion) {
+        // Empty message — send welcome
+        const welcomeTwiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Message>🌾 Namaskara! I am BELAI — your AI farming assistant. Send me a voice note or type your farming question in any language (Kannada, Hindi, Telugu, English)!</Message>
+</Response>`;
+        return res.type('text/xml').send(welcomeTwiml);
+    }
+
+    try {
+        // Get AI reply
+        const aiData = await geminiPost({
+            model: 'gemini-1.5-flash',
+            messages: [
+                { role: 'system', content: BELAI_SYSTEM.en + ' Keep response under 150 words. Use simple language for WhatsApp. Use emojis.' },
+                { role: 'user', content: farmerQuestion }
+            ],
+            max_tokens: 300,
+            temperature: 0.7
+        });
+        const reply = aiData.choices?.[0]?.message?.content
+            || '🙏 Sorry, could not process your question. Please try again.';
+
+        // Send reply back to farmer's WhatsApp
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Message>🌾 *BELAI AgriBot*\n\n${reply}\n\n_Send another voice note or text for more help!_</Message>
+</Response>`;
+        res.type('text/xml').send(twiml);
+
+        // Save to chat history if DB connected
+        if (mongoose.connection.readyState === 1) {
+            const sessionId = 'whatsapp_' + fromNumber.replace(/\D/g, '');
+            await Chat.create({ sessionId, lang: 'en', role: 'user', content: farmerQuestion }).catch(() => {});
+            await Chat.create({ sessionId, lang: 'en', role: 'assistant', content: reply }).catch(() => {});
+        }
+    } catch (e) {
+        console.error('WhatsApp bot error:', e.message);
+        const errTwiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Message>🙏 Sorry, I had a problem answering. Please try again!</Message>
+</Response>`;
+        res.type('text/xml').send(errTwiml);
+    }
+});
+
 // ── START ─────────────────────────────────────────────────
 app.listen(PORT, () => {
     console.log(`\n  🌾 BELAI Backend → http://localhost:${PORT}`);
-    console.log(`  Health  → http://localhost:${PORT}/api/health`);
+    console.log(`  Health          → http://localhost:${PORT}/api/health`);
+    console.log(`  Voice Call      → POST /api/voice/incoming`);
+    console.log(`  WhatsApp Bot    → POST /api/whatsapp`);
     console.log(`  MongoDB → ${MONGO_URI ? 'configured' : 'NOT SET (add MONGO_URI to .env)'}\n`);
 });
