@@ -768,10 +768,433 @@ app.post('/api/whatsapp', async (req, res) => {
     }
 });
 
+// ══════════════════════════════════════════════════════════
+//  LITE MODE — Server-rendered HTML for keypad phones
+//  Karbon K9, JioPhone, Nokia, Opera Mini — zero JavaScript
+//  Routes: /lite  /lite/ask  /lite/prices  /lite/planner
+//          /lite/schemes  /lite/tips
+// ══════════════════════════════════════════════════════════
+
+// Shared HTML shell for lite pages
+function liteShell(title, body) {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+<meta name="HandheldFriendly" content="true"/>
+<meta name="MobileOptimized" content="240"/>
+<title>${title} - BELAI</title>
+<style>
+body{background:#0a1a0c;color:#fff;font-family:Arial,sans-serif;font-size:14px;margin:0;padding:6px}
+h1{font-size:17px;color:#f5c842;text-align:center;margin:6px 0 2px;border-bottom:1px solid #2a4a2c;padding-bottom:6px}
+h2{font-size:14px;color:#f5c842;margin:8px 0 4px}
+h3{font-size:13px;color:#a3e635;margin:6px 0 3px}
+p{margin:4px 0;line-height:1.5}
+a{color:#f5c842;text-decoration:none}
+a:visited{color:#d4a800}
+.sub{font-size:11px;color:#88aa88;text-align:center;margin-bottom:8px}
+.menu{background:#1a2e1c;border:1px solid #2a4a2c;padding:6px;margin-bottom:10px}
+.mi{display:block;padding:10px 8px;border-bottom:1px solid #2a4a2c;color:#fff;font-size:13px;font-weight:bold}
+.mi:last-child{border-bottom:none}
+.ar{color:#f5c842;float:right}
+form{margin:0;padding:0}
+textarea,input[type=text],select{width:100%;background:#1a2e1c;border:1px solid #3a6a3c;color:#fff;font-size:13px;padding:8px;margin-bottom:8px;box-sizing:border-box}
+input[type=submit]{background:#1a5e1c;border:2px solid #f5c842;color:#f5c842;font-size:14px;font-weight:bold;padding:10px;width:100%;cursor:pointer}
+label{display:block;color:#88cc88;font-size:12px;margin-bottom:3px}
+.ans{background:#0f2a10;border:1px solid #3a6a3c;border-left:3px solid #f5c842;padding:10px;margin:10px 0;font-size:13px;line-height:1.6}
+.you{background:#1a1a00;border:1px solid #4a4a00;padding:8px;margin-bottom:8px;font-size:12px;color:#cccc88}
+table{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px}
+th{background:#1a3e1c;color:#f5c842;padding:6px 4px;text-align:left;border-bottom:1px solid #3a6a3c;font-size:11px}
+td{padding:7px 4px;border-bottom:1px solid #1a3a1c;vertical-align:top}
+tr:nth-child(even) td{background:#0f1f10}
+.up{color:#22c55e;font-weight:bold}
+.dn{color:#ef4444;font-weight:bold}
+.fl{color:#facc15}
+.card{background:#1a2e1c;border:1px solid #2a4a2c;padding:8px;margin-bottom:8px}
+.sch{background:#0f1a0f;border-left:2px solid #22c55e;padding:6px 8px;margin-bottom:8px;font-size:12px;line-height:1.5}
+.tip{background:#0a1f1a;border-left:2px solid #f5c842;padding:6px 8px;margin-bottom:8px;font-size:13px;line-height:1.5}
+.back{display:block;background:#1a2e1c;border:1px solid #2a4a2c;color:#f5c842;text-align:center;padding:9px;margin-bottom:10px;font-size:13px;font-weight:bold}
+.foot{text-align:center;font-size:10px;color:#446644;margin-top:14px;padding-top:6px;border-top:1px solid #1a3a1c}
+.err{color:#ef4444;font-size:12px}
+.gn{color:#22c55e}
+.gd{color:#f5c842}
+hr{border:none;border-top:1px solid #1a3a1c;margin:10px 0}
+</style>
+</head>
+<body>
+<h1>&#127807; BELAI Lite</h1>
+<p class="sub">AI for Farmers | Keypad Mode</p>
+${body}
+<div class="foot">BELAI &bull; belai.vercel.app &bull; Works on all phones</div>
+</body>
+</html>`;
+}
+
+// ── /lite  — Home ─────────────────────────────────────────
+app.get('/lite', (_req, res) => {
+    res.type('text/html').send(liteShell('Home', `
+<div class="menu">
+  <a class="mi" href="/lite/ask">&#129302; Ask AI - Any Question <span class="ar">&#9658;</span></a>
+  <a class="mi" href="/lite/prices">&#128200; Mandi Prices Today <span class="ar">&#9658;</span></a>
+  <a class="mi" href="/lite/planner">&#127807; Crop Planner <span class="ar">&#9658;</span></a>
+  <a class="mi" href="/lite/schemes">&#127963; Govt Schemes (PM-Kisan) <span class="ar">&#9658;</span></a>
+  <a class="mi" href="/lite/tips">&#9889; Quick Farming Tips <span class="ar">&#9658;</span></a>
+</div>
+<div class="card">
+  <b class="gd">Using Karbon K9 / JioPhone?</b><br/>
+  This page works on ALL phones. No app needed.<br/>
+  Type your farming question and get AI advice instantly.
+</div>
+<div class="card">
+  <b>PM-Kisan:</b> Rs.6000/year &bull;
+  <b>Fasal Bima:</b> Crop insurance &bull;
+  <b>eNAM:</b> Online mandi
+</div>`));
+});
+
+// ── /lite/ask  — AI Chat Form ─────────────────────────────
+app.get('/lite/ask', (req, res) => {
+    const langOpts = ['en','kn','hi','te','ta'].map(l => {
+        const names = {en:'English',kn:'Kannada',hi:'Hindi',te:'Telugu',ta:'Tamil'};
+        return `<option value="${l}">${names[l]}</option>`;
+    }).join('');
+    const quickLinks = [
+        ['PM-Kisan scheme details','PM-Kisan scheme details'],
+        ['Tomato disease treatment','Tomato disease treatment'],
+        ['Best crops for monsoon','Best crops for monsoon season in Karnataka'],
+        ['Urea fertilizer dosage','Urea fertilizer dosage per acre'],
+        ['Drip irrigation cost','Drip irrigation cost and subsidy'],
+    ].map(([label,q]) =>
+        `<a href="/lite/ask?q=${encodeURIComponent(q)}" style="display:inline-block;background:#1a3e1c;border:1px solid #2a5a2c;color:#a3e635;font-size:11px;padding:4px 7px;margin:2px 2px 2px 0">${label}</a>`
+    ).join('');
+
+    res.type('text/html').send(liteShell('Ask AI', `
+<a class="back" href="/lite">&#8592; Back to Menu</a>
+<h2>&#129302; Ask BELAI AI</h2>
+<p style="font-size:12px;color:#88cc88;margin-bottom:8px">Type your question in any language</p>
+<p style="font-size:11px;color:#88aa88;margin-bottom:6px">Quick questions:</p>
+${quickLinks}
+<hr/>
+<form method="POST" action="/lite/ask">
+  <label>Your Language:</label>
+  <select name="lang">${langOpts}</select>
+  <label>Your Question:</label>
+  <textarea name="q" rows="4" placeholder="e.g. What fertilizer for tomato crop?">${req.query.q ? req.query.q : ''}</textarea>
+  <input type="submit" value="Get AI Answer &#9658;"/>
+</form>`));
+});
+
+app.post('/lite/ask', express.urlencoded({ extended: false }), async (req, res) => {
+    const lang = req.body.lang || 'en';
+    const question = (req.body.q || '').trim();
+    if (!question) {
+        return res.type('text/html').send(liteShell('Ask AI', `
+<a class="back" href="/lite">&#8592; Back to Menu</a>
+<p class="err">Please type a question first.</p>
+<a class="back" href="/lite/ask">Try Again</a>`));
+    }
+    let reply = '';
+    try {
+        const systemPrompt = BELAI_SYSTEM[lang] || BELAI_SYSTEM.en;
+        const data = await groqPost({
+            model: MODEL_TEXT,
+            messages: [
+                { role: 'system', content: systemPrompt + ' Keep answer under 100 words. Use simple text, no markdown symbols.' },
+                { role: 'user', content: question }
+            ],
+            max_tokens: 300,
+            temperature: 0.7
+        });
+        reply = (data.choices?.[0]?.message?.content || 'Could not get answer. Please try again.')
+            .replace(/[*#_`]/g, '').trim();
+    } catch (e) {
+        reply = 'Network error. Please try again in a few seconds.';
+    }
+
+    const langOpts = ['en','kn','hi','te','ta'].map(l => {
+        const names = {en:'English',kn:'Kannada',hi:'Hindi',te:'Telugu',ta:'Tamil'};
+        return `<option value="${l}"${l===lang?' selected':''}>${names[l]}</option>`;
+    }).join('');
+
+    res.type('text/html').send(liteShell('AI Answer', `
+<a class="back" href="/lite">&#8592; Back to Menu</a>
+<div class="you"><b>Your question:</b><br/>${question.replace(/</g,'&lt;')}</div>
+<div class="ans"><b class="gd">&#129302; BELAI Answer:</b><br/><br/>${reply.replace(/\n/g,'<br/>')}</div>
+<hr/>
+<h3>Ask another question:</h3>
+<form method="POST" action="/lite/ask">
+  <select name="lang">${langOpts}</select>
+  <textarea name="q" rows="3" placeholder="Type next question..."></textarea>
+  <input type="submit" value="Ask Again &#9658;"/>
+</form>`));
+});
+
+// ── /lite/prices  — Market Prices ────────────────────────
+app.get('/lite/prices', async (_req, res) => {
+    const STATIC = [
+        { crop:'Tomato',  price:1200, district:'Kolar',          trend:'up'   },
+        { crop:'Paddy',   price:2200, district:'Raichur',        trend:'flat' },
+        { crop:'Wheat',   price:2700, district:'Dharwad',        trend:'up'   },
+        { crop:'Maize',   price:1900, district:'Davanagere',     trend:'down' },
+        { crop:'Onion',   price:1500, district:'Chitradurga',    trend:'down' },
+        { crop:'Banana',  price:1200, district:'Chamarajanagar', trend:'up'   },
+        { crop:'Coffee',  price:8000, district:'Chikkamagaluru', trend:'up'   },
+        { crop:'Coconut', price:25,   district:'Tumakuru',       trend:'flat' },
+        { crop:'Ragi',    price:3578, district:'Mandya',         trend:'up'   },
+        { crop:'Sugarcane',price:3200,district:'Belgaum',        trend:'flat' },
+    ];
+    let prices = STATIC;
+    try {
+        await connectDB();
+        if (mongoose.connection.readyState === 1) {
+            const db = await MarketPrice.find().sort({ createdAt:-1 }).limit(30);
+            prices = [...STATIC, ...db];
+        }
+    } catch(e) {}
+
+    const trendArrow = t => t==='up'?'<span class="up">&#9650; Up</span>':t==='down'?'<span class="dn">&#9660; Down</span>':'<span class="fl">&#8212; Flat</span>';
+    const rows = prices.map(p =>
+        `<tr><td><b>${p.crop}</b></td><td class="gd">Rs.${p.price}/q</td><td>${p.district||'KA'}</td><td>${trendArrow(p.trend)}</td></tr>`
+    ).join('');
+    const date = new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+
+    res.type('text/html').send(liteShell('Mandi Prices', `
+<a class="back" href="/lite">&#8592; Back to Menu</a>
+<h2>&#128200; Mandi Prices — ${date}</h2>
+<p style="font-size:11px;color:#88aa88;margin-bottom:8px">Karnataka APMC prices (Rs. per quintal)</p>
+<table>
+  <tr><th>Crop</th><th>Price</th><th>District</th><th>Trend</th></tr>
+  ${rows}
+</table>
+<div class="card" style="font-size:12px">
+  <b class="gd">Share a price you know:</b>
+  <form method="POST" action="/lite/prices/add">
+    <input type="text" name="crop" placeholder="Crop name (e.g. Tomato)"/>
+    <input type="text" name="price" placeholder="Price per quintal (e.g. 1500)"/>
+    <input type="text" name="district" placeholder="Your district"/>
+    <input type="submit" value="Share Price &#9658;"/>
+  </form>
+</div>
+<p style="font-size:10px;color:#446644">Prices are indicative. Verify at local APMC before selling.</p>`));
+});
+
+app.post('/lite/prices/add', express.urlencoded({ extended: false }), async (req, res) => {
+    const { crop, price, district } = req.body;
+    if (crop && price) {
+        try {
+            await connectDB();
+            if (mongoose.connection.readyState === 1) {
+                await MarketPrice.create({ crop, price: parseFloat(price)||0, district: district||'Karnataka', trend:'flat', confirms:1 });
+            }
+        } catch(e) {}
+    }
+    res.redirect('/lite/prices');
+});
+
+// ── /lite/planner  — Crop Planner ─────────────────────────
+app.get('/lite/planner', (_req, res) => {
+    const districts = ['Bangalore Rural','Belagavi','Bellary','Bidar','Chamarajanagar','Chikkaballapur','Chikkamagaluru','Chitradurga','Dakshina Kannada','Davanagere','Dharwad','Gadag','Hassan','Haveri','Kalaburagi','Kodagu','Kolar','Koppal','Mandya','Mysuru','Raichur','Ramanagara','Shivamogga','Tumakuru','Udupi','Uttara Kannada','Vijayapura','Yadgir'];
+    const distOpts = districts.map(d=>`<option value="${d}">${d}</option>`).join('');
+    res.type('text/html').send(liteShell('Crop Planner', `
+<a class="back" href="/lite">&#8592; Back to Menu</a>
+<h2>&#127807; Crop Planner</h2>
+<p style="font-size:12px;color:#88cc88;margin-bottom:8px">Enter your farm details — AI suggests best crops</p>
+<form method="POST" action="/lite/planner">
+  <label>District:</label>
+  <select name="district">${distOpts}</select>
+  <label>Soil Type:</label>
+  <select name="soil">
+    <option>Red Soil</option>
+    <option>Black Cotton Soil</option>
+    <option>Sandy Loam</option>
+    <option>Clay Soil</option>
+    <option>Laterite Soil</option>
+    <option>Alluvial Soil</option>
+  </select>
+  <label>Season:</label>
+  <select name="season">
+    <option>Kharif (June-Oct)</option>
+    <option>Rabi (Nov-Mar)</option>
+    <option>Summer (Mar-Jun)</option>
+  </select>
+  <label>Irrigation:</label>
+  <select name="rainfall">
+    <option>Rainfed only</option>
+    <option>Borewell irrigated</option>
+    <option>Canal irrigated</option>
+    <option>Drip irrigation</option>
+  </select>
+  <input type="submit" value="Get Crop Recommendations &#9658;"/>
+</form>`));
+});
+
+app.post('/lite/planner', express.urlencoded({ extended: false }), async (req, res) => {
+    const { district='Kolar', soil='Red Soil', season='Kharif', rainfall='Rainfed only' } = req.body;
+    let crops = [];
+    try {
+        const prompt = `District:${district}, Soil:${soil}, Season:${season}, Water:${rainfall}. Give top 5 crops. Return ONLY valid JSON: {"crops":[{"name":"...","yield":"...","price":"...","days":"...","why":"..."}]}`;
+        const data = await groqPost({
+            model: MODEL_TEXT,
+            messages: [
+                { role:'system', content:'You are expert Karnataka agronomist. Return only valid JSON, no markdown.' },
+                { role:'user', content: prompt }
+            ],
+            max_tokens: 600,
+            temperature: 0.3
+        });
+        let txt = (data.choices?.[0]?.message?.content||'').replace(/```(?:json)?\s*/gi,'').replace(/```/g,'').trim();
+        const m = txt.match(/\{[\s\S]*\}/);
+        if (m) crops = JSON.parse(m[0]).crops || [];
+    } catch(e) {
+        crops = [
+            {name:'Tomato',yield:'8-12 tonnes/acre',price:'Rs.800-2000/q',days:'90-120',why:'High demand, good for '+district},
+            {name:'Ragi',yield:'8-10 q/acre',price:'Rs.3578/q MSP',days:'110-130',why:'Drought tolerant, suited for Karnataka'},
+            {name:'Groundnut',yield:'6-8 q/acre',price:'Rs.5550/q MSP',days:'100-120',why:'Good for sandy loam soils'},
+        ];
+    }
+
+    const rows = crops.map((c,i) => `
+<div class="card">
+  <b class="gd">${i+1}. ${c.name}</b><br/>
+  <span style="font-size:11px">
+    <b>Yield:</b> ${c.yield||'-'} &bull;
+    <b>Price:</b> ${c.price||'-'}<br/>
+    <b>Duration:</b> ${c.days||'-'} days<br/>
+    <span style="color:#88cc88">${c.why||''}</span>
+  </span>
+</div>`).join('');
+
+    res.type('text/html').send(liteShell('Crop Recommendations', `
+<a class="back" href="/lite/planner">&#8592; New Plan</a>
+<a class="back" href="/lite">&#8962; Home</a>
+<h2>&#127807; Recommended Crops</h2>
+<p style="font-size:11px;color:#88aa88;margin-bottom:8px">
+  ${district} &bull; ${soil} &bull; ${season}
+</p>
+${rows}
+<div class="tip">
+  <b>Tip:</b> Check PM-Kisan and Fasal Bima Yojana before sowing.
+  <a href="/lite/schemes">View Schemes &#9658;</a>
+</div>`));
+});
+
+// ── /lite/schemes  — Govt Schemes ────────────────────────
+app.get('/lite/schemes', (_req, res) => {
+    res.type('text/html').send(liteShell('Govt Schemes', `
+<a class="back" href="/lite">&#8592; Back to Menu</a>
+<h2>&#127963; Government Schemes for Farmers</h2>
+
+<div class="sch">
+  <b class="gd">1. PM-Kisan Samman Nidhi</b><br/>
+  Rs.6000 per year (Rs.2000 x 3 instalments)<br/>
+  Who: All small &amp; marginal farmers with land<br/>
+  Apply: pmkisan.gov.in or nearest CSC centre<br/>
+  Helpline: <b>155261</b>
+</div>
+
+<div class="sch">
+  <b class="gd">2. PM Fasal Bima Yojana (PMFBY)</b><br/>
+  Crop insurance at low premium (2% Kharif, 1.5% Rabi)<br/>
+  Covers: Drought, flood, pest, hailstorm damage<br/>
+  Apply: Through bank or pmfby.gov.in<br/>
+  Deadline: Before sowing season
+</div>
+
+<div class="sch">
+  <b class="gd">3. Kisan Credit Card (KCC)</b><br/>
+  Loan up to Rs.3 lakh at 4% interest per year<br/>
+  For: Seeds, fertilizers, equipment purchase<br/>
+  Apply: Any nationalized bank branch<br/>
+  Bring: Land documents + Aadhaar card
+</div>
+
+<div class="sch">
+  <b class="gd">4. PM Kisan Mandhan Yojana (Pension)</b><br/>
+  Rs.3000/month pension after age 60<br/>
+  Who: Farmers aged 18-40 years<br/>
+  Premium: Rs.55-200/month depending on age<br/>
+  Apply: CSC centre with Aadhaar + bank passbook
+</div>
+
+<div class="sch">
+  <b class="gd">5. Soil Health Card (SHC)</b><br/>
+  Free soil testing for your farm<br/>
+  Get: Fertilizer recommendations for your soil<br/>
+  Apply: Contact nearest Krishi Vigyan Kendra (KVK)
+</div>
+
+<div class="sch">
+  <b class="gd">6. eNAM — National Agriculture Market</b><br/>
+  Sell crops online at best price<br/>
+  Register: enam.gov.in<br/>
+  Available in: 1000+ mandis across India
+</div>
+
+<hr/>
+<div class="card" style="font-size:12px">
+  <b>Karnataka Specific:</b><br/>
+  Raita Siri Scheme &bull; HDMC Subsidy &bull; Zero Interest Loans<br/>
+  Contact: Rayata Samparka Kendra (RSK) in your taluk<br/>
+  Helpline: <b>1800-425-1422</b> (Karnataka Agriculture)
+</div>
+
+<a class="back" href="/lite/ask?q=Tell+me+about+PM-Kisan+scheme+eligibility+and+how+to+apply">
+  &#129302; Ask AI about any scheme &#9658;
+</a>`));
+});
+
+// ── /lite/tips  — Quick Tips ──────────────────────────────
+app.get('/lite/tips', (_req, res) => {
+    res.type('text/html').send(liteShell('Farming Tips', `
+<a class="back" href="/lite">&#8592; Back to Menu</a>
+<h2>&#9889; Quick Farming Tips</h2>
+
+<div class="tip">
+  <b>&#127774; Soil Preparation</b><br/>
+  Deep plough (20-25cm) before Kharif. Add 10 tonnes FYM per acre. Test soil every 3 years at KVK.
+</div>
+
+<div class="tip">
+  <b>&#128167; Water Management</b><br/>
+  Drip irrigation saves 40-50% water. Ideal for tomato, chilli, sugarcane. Govt subsidy available (90% for SC/ST, 50% others).
+</div>
+
+<div class="tip">
+  <b>&#127804; Disease Early Warning</b><br/>
+  Yellow leaves = nutrient deficiency or virus. Brown spots = fungal. Apply neem oil (5ml/litre) as organic spray first.
+</div>
+
+<div class="tip">
+  <b>&#128200; Best Time to Sell</b><br/>
+  Avoid selling right after harvest when prices are lowest. Store in cold storage or SHG warehouses. Prices rise 30-40% in 2 months.
+</div>
+
+<div class="tip">
+  <b>&#127807; Ragi Tips (Karnataka)</b><br/>
+  MSP: Rs.3578/quintal. Sow June-July. Spacing: 22.5 x 10cm. Apply 60:30:30 NPK per acre. Resistant to drought.
+</div>
+
+<div class="tip">
+  <b>&#127813; Tomato Tips</b><br/>
+  Raised bed planting. Apply DAP 100kg + Urea 50kg per acre. Stake at 30cm height. Spray copper fungicide for blight.
+</div>
+
+<div class="tip">
+  <b>&#127807; Organic Farming</b><br/>
+  Vermicompost (1 tonne/acre) replaces 50% chemical fertilizer. Sell as "Organic" for 20-30% premium price.
+</div>
+
+<hr/>
+<a class="back" href="/lite/ask">&#129302; Ask AI for more tips &#9658;</a>
+<a class="back" href="/lite/planner">&#127807; Plan my crops &#9658;</a>`));
+});
+
 // ── START ─────────────────────────────────────────────────
 app.listen(PORT, () => {
     console.log(`\n  🌾 BELAI Backend → http://localhost:${PORT}`);
     console.log(`  Health          → http://localhost:${PORT}/api/health`);
+    console.log(`  Lite Mode       → http://localhost:${PORT}/lite`);
     console.log(`  Voice Call      → POST /api/voice/incoming`);
     console.log(`  WhatsApp Bot    → POST /api/whatsapp`);
     console.log(`  MongoDB → ${MONGO_URI ? 'configured' : 'NOT SET (add MONGO_URI to .env)'}\n`);
