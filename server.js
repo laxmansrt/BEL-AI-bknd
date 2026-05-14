@@ -791,7 +791,10 @@ function liteShell(title, body) {
 <link rel="apple-touch-icon" href="https://bel-ai.vercel.app/icons/icon-192.png"/>
 <meta name="theme-color" content="#0a1a0c"/>
 <style>
-body{background:#0a1a0c;color:#fff;font-family:Arial,sans-serif;font-size:14px;margin:0;padding:6px}
+body{background:#0a1a0c url('https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=600&q=40') center/cover fixed no-repeat;color:#fff;font-family:Arial,sans-serif;font-size:14px;margin:0;padding:0}
+body::before{content:'';position:fixed;inset:0;background:rgba(5,15,5,0.88);z-index:0}
+body>*{position:relative;z-index:1}
+.wrap{padding:6px;max-width:480px;margin:0 auto}
 h1{font-size:17px;color:#f5c842;text-align:center;margin:6px 0 2px;border-bottom:1px solid #2a4a2c;padding-bottom:6px}
 h2{font-size:14px;color:#f5c842;margin:8px 0 4px}
 h3{font-size:13px;color:#a3e635;margin:6px 0 3px}
@@ -828,10 +831,12 @@ hr{border:none;border-top:1px solid #1a3a1c;margin:10px 0}
 </style>
 </head>
 <body>
+<div class="wrap">
 <h1>&#127807; BELAI Lite</h1>
 <p class="sub">AI for Farmers | Keypad Mode</p>
 ${body}
 <div class="foot">BELAI &bull; belai.vercel.app &bull; Works on all phones</div>
+</div>
 </body>
 </html>`;
 }
