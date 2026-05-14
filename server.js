@@ -785,6 +785,11 @@ function liteShell(title, body) {
 <meta name="HandheldFriendly" content="true"/>
 <meta name="MobileOptimized" content="240"/>
 <title>${title} - BELAI</title>
+<link rel="icon" type="image/png" sizes="72x72" href="https://bel-ai.vercel.app/icons/icon-72.png"/>
+<link rel="icon" type="image/png" sizes="192x192" href="https://bel-ai.vercel.app/icons/icon-192.png"/>
+<link rel="shortcut icon" href="https://bel-ai.vercel.app/icons/icon-72.png"/>
+<link rel="apple-touch-icon" href="https://bel-ai.vercel.app/icons/icon-192.png"/>
+<meta name="theme-color" content="#0a1a0c"/>
 <style>
 body{background:#0a1a0c;color:#fff;font-family:Arial,sans-serif;font-size:14px;margin:0;padding:6px}
 h1{font-size:17px;color:#f5c842;text-align:center;margin:6px 0 2px;border-bottom:1px solid #2a4a2c;padding-bottom:6px}
