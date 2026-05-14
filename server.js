@@ -1003,15 +1003,31 @@ app.post('/lite/ask', express.urlencoded({ extended: false }), async (req, res) 
         reply = 'Network error. Please try again in a few seconds.';
     }
 
+    // Build TTS audio URL — split into chunks of 200 chars for Google TTS
+    const ttsLang = {en:'en',kn:'kn',hi:'hi',te:'te',ta:'ta'}[lang] || 'en';
+    const ttsChunks = reply.match(/.{1,190}[.!?,\s]|.{1,200}/g) || [reply.slice(0,200)];
+    const audioPlayers = ttsChunks.map((chunk, i) => {
+        const encoded = encodeURIComponent(chunk.trim());
+        return `<source src="/lite/tts?q=${encoded}&lang=${ttsLang}&i=${i}" type="audio/mpeg">`;
+    }).join('');
+
     const langOpts = ['en','kn','hi','te','ta'].map(l => {
         const names = {en:'English',kn:'Kannada',hi:'Hindi',te:'Telugu',ta:'Tamil'};
         return `<option value="${l}"${l===lang?' selected':''}>${names[l]}</option>`;
     }).join('');
 
+    const listenLabel = {en:'🔊 Listen to Answer',kn:'🔊 ಉತ್ತರ ಕೇಳಿ',hi:'🔊 जवाब सुनें',te:'🔊 సమాధానం వినండి',ta:'🔊 பதிலைக் கேளுங்கள்'}[lang] || '🔊 Listen';
+
     res.type('text/html').send(liteShell(t(lang,'belaiAnswer'), `
 <a class="back" href="/lite?lang=${lang}">${t(lang,'backMenu')}</a>
 <div class="you"><b>${t(lang,'yourQuestion')}</b><br/>${question.replace(/</g,'&lt;')}</div>
-<div class="ans"><b class="gd">&#129302; ${t(lang,'belaiAnswer')}</b><br/><br/>${reply.replace(/\n/g,'<br/>')}</div>
+<div class="ans"><b class="gd">&#129302; ${t(lang,'belaiAnswer')}</b><br/><br/>${reply.replace(/\n/g,'<br/')}</div>
+<div style="background:#1a2e1c;border:1px solid #3a6a3c;padding:8px;margin:8px 0;text-align:center">
+  <div style="color:#f5c842;font-size:13px;font-weight:bold;margin-bottom:6px">${listenLabel}</div>
+  <audio controls preload="none" style="width:100%;max-height:40px">
+    ${audioPlayers}
+  </audio>
+</div>
 <hr/>
 <h3>${t(lang,'askAnother')}</h3>
 <form method="POST" action="/lite/ask">
@@ -1019,6 +1035,25 @@ app.post('/lite/ask', express.urlencoded({ extended: false }), async (req, res) 
   <textarea name="q" rows="3" placeholder="${t(lang,'typeNext')}"></textarea>
   <input type="submit" value="${t(lang,'askAgain')}"/>
 </form>`));
+});
+
+// ── /lite/tts  — Text-to-Speech proxy for JioPhone ──────
+app.get('/lite/tts', async (req, res) => {
+    const text = (req.query.q || '').slice(0, 200);
+    const lang = req.query.lang || 'en';
+    if (!text) return res.status(400).send('No text');
+    try {
+        const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${lang}&client=tw-ob&ttsspeed=0.9`;
+        const resp = await fetch(ttsUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0', 'Referer': 'https://translate.google.com/' }
+        });
+        if (!resp.ok) throw new Error('TTS failed');
+        res.set({ 'Content-Type': 'audio/mpeg', 'Cache-Control': 'public, max-age=86400' });
+        const buffer = await resp.arrayBuffer();
+        res.send(Buffer.from(buffer));
+    } catch (e) {
+        res.status(500).send('TTS unavailable');
+    }
 });
 
 // ── /lite/prices  — Market Prices ────────────────────────
