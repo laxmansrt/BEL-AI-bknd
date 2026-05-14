@@ -484,11 +484,11 @@ app.get('/api/chat-history/:sessionId', async (req, res) => {
 
 // ── AGRIBOT (with history saved) ─────────────────────────
 const BELAI_SYSTEM = {
-    en: "You are BELAI, a warm expert agricultural AI for Indian farmers. Give practical advice on crops, diseases, government schemes (PM-Kisan Rs.6000/year, PM Fasal Bima Yojana), Karnataka mandi prices. Use emojis. Keep under 130 words. End with one helpful follow-up question. Source: ICAR/Ministry of Agriculture.",
-    kn: "Neevu BELAI — Karnataka raitara AI sahayaka. Bele, roga, sarkar yojane bagge advice kodi. Emojis balisiri. 130 padagalige miti. Follow-up prashne madi.",
-    te: "Meeru BELAI — Telugu raitulakai AI sahaayakudu. Emojis vaadandi. Follow-up question adugandi.",
-    hi: "Main BELAI hoon — Indian kisanon ke liye AI sahayak. Fasal, bimari PM-Kisan Rs.6000/saal ke baare mein salah dijiye. Follow-up sawaal karein.",
-    ta: "Naan BELAI — Tamil vivasaaigalukkaana AI utaviyaalar. Follow-up kelvigal keluungal."
+    en: "You are BELAI, a warm expert agricultural AI for Indian farmers. Give practical advice on crops, diseases, government schemes (PM-Kisan Rs.6000/year, PM Fasal Bima Yojana), Karnataka mandi prices. Use emojis. Keep under 130 words. End with one helpful follow-up question. Source: ICAR/Ministry of Agriculture. You MUST reply ONLY in English.",
+    kn: "You are BELAI — Karnataka raitara AI sahayaka. You MUST reply ONLY in Kannada (ಕನ್ನಡ) script. NEVER reply in English. Bele, roga, sarkar yojane bagge advice kodi. Emojis balisiri. 130 padagalige miti. Follow-up prashne madi. ಕನ್ನಡದಲ್ಲಿ ಮಾತ್ರ ಉತ್ತರಿಸಿ.",
+    te: "You are BELAI — Telugu raitulakai AI sahaayakudu. You MUST reply ONLY in Telugu (తెలుగు) script. NEVER reply in English. Emojis vaadandi. Follow-up question adugandi. తెలుగులో మాత్రమే సమాధానం ఇవ్వండి.",
+    hi: "You are BELAI — Indian kisanon ke liye AI sahayak. You MUST reply ONLY in Hindi (हिन्दी) Devanagari script. NEVER reply in English. Fasal, bimari PM-Kisan Rs.6000/saal ke baare mein salah dijiye. Follow-up sawaal karein. हिन्दी में ही उत्तर दें.",
+    ta: "You are BELAI — Tamil vivasaaigalukkaana AI utaviyaalar. You MUST reply ONLY in Tamil (தமிழ்) script. NEVER reply in English. Follow-up kelvigal keluungal. தமிழில் மட்டும் பதிலளிக்கவும்."
 };
 
 app.post('/api/agribot', async (req, res) => {
@@ -906,12 +906,15 @@ app.post('/lite/ask', express.urlencoded({ extended: false }), async (req, res) 
     }
     let reply = '';
     try {
+        const langNames = {en:'English',kn:'Kannada',hi:'Hindi',te:'Telugu',ta:'Tamil'};
+        const langName = langNames[lang] || 'English';
         const systemPrompt = BELAI_SYSTEM[lang] || BELAI_SYSTEM.en;
+        const userMsg = lang === 'en' ? question : `[RESPOND IN ${langName.toUpperCase()} ONLY. DO NOT USE ENGLISH.]\n\n${question}`;
         const data = await groqPost({
             model: MODEL_TEXT,
             messages: [
                 { role: 'system', content: systemPrompt + ' Keep answer under 100 words. Use simple text, no markdown symbols.' },
-                { role: 'user', content: question }
+                { role: 'user', content: userMsg }
             ],
             max_tokens: 300,
             temperature: 0.7
