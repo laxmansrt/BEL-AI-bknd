@@ -842,19 +842,95 @@ ${body}
 }
 
 // ── /lite  — Home ─────────────────────────────────────────
-app.get('/lite', (_req, res) => {
-    res.type('text/html').send(liteShell('Home', `
+// ── UI Translations for Lite Pages ───────────────────────
+const UI = {
+    en: {
+        home: 'Home', askAI: 'Ask AI - Any Question', mandiPrices: 'Mandi Prices Today',
+        cropPlanner: 'Crop Planner', govtSchemes: 'Govt Schemes (PM-Kisan)', farmTips: 'Quick Farming Tips',
+        jioMsg: 'Using JioPhone?', jioDesc: 'This page works on ALL phones. No app needed. Type your farming question and get AI advice instantly.',
+        backMenu: '← Back to Menu', askTitle: 'Ask BELAI AI', askDesc: 'Type your question in any language',
+        yourLang: 'Your Language:', yourQ: 'Your Question:', getAnswer: 'Get AI Answer ►',
+        quickQ: 'Quick questions:', yourQuestion: 'Your question:', belaiAnswer: 'BELAI Answer:',
+        askAnother: 'Ask another question:', askAgain: 'Ask Again ►', typeNext: 'Type next question...',
+        enterQ: 'Please type a question first.', tryAgain: 'Try Again',
+        aiForFarmers: 'AI for Farmers', selectLang: 'Select Language:',
+        placeholder: 'e.g. What fertilizer for tomato crop?',
+    },
+    kn: {
+        home: 'ಮುಖಪುಟ', askAI: 'AI ಗೆ ಕೇಳಿ - ಯಾವುದೇ ಪ್ರಶ್ನೆ', mandiPrices: 'ಇಂದಿನ ಮಂಡಿ ಬೆಲೆಗಳು',
+        cropPlanner: 'ಬೆಳೆ ಯೋಜಕ', govtSchemes: 'ಸರ್ಕಾರಿ ಯೋಜನೆಗಳು (PM-ಕಿಸಾನ್)', farmTips: 'ಕೃಷಿ ಸಲಹೆಗಳು',
+        jioMsg: 'JioPhone ಬಳಸುತ್ತಿದ್ದೀರಾ?', jioDesc: 'ಈ ಪುಟ ಎಲ್ಲಾ ಫೋನ್‌ಗಳಲ್ಲಿ ಕೆಲಸ ಮಾಡುತ್ತದೆ. ನಿಮ್ಮ ಕೃಷಿ ಪ್ರಶ್ನೆ ಟೈಪ್ ಮಾಡಿ.',
+        backMenu: '← ಮೆನುಗೆ ಹಿಂತಿರುಗಿ', askTitle: 'BELAI AI ಗೆ ಕೇಳಿ', askDesc: 'ನಿಮ್ಮ ಪ್ರಶ್ನೆಯನ್ನು ಟೈಪ್ ಮಾಡಿ',
+        yourLang: 'ನಿಮ್ಮ ಭಾಷೆ:', yourQ: 'ನಿಮ್ಮ ಪ್ರಶ್ನೆ:', getAnswer: 'AI ಉತ್ತರ ಪಡೆಯಿರಿ ►',
+        quickQ: 'ತ್ವರಿತ ಪ್ರಶ್ನೆಗಳು:', yourQuestion: 'ನಿಮ್ಮ ಪ್ರಶ್ನೆ:', belaiAnswer: 'BELAI ಉತ್ತರ:',
+        askAnother: 'ಮತ್ತೊಂದು ಪ್ರಶ್ನೆ ಕೇಳಿ:', askAgain: 'ಮತ್ತೆ ಕೇಳಿ ►', typeNext: 'ಮುಂದಿನ ಪ್ರಶ್ನೆ ಟೈಪ್ ಮಾಡಿ...',
+        enterQ: 'ದಯವಿಟ್ಟು ಮೊದಲು ಪ್ರಶ್ನೆ ಟೈಪ್ ಮಾಡಿ.', tryAgain: 'ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ',
+        aiForFarmers: 'ರೈತರಿಗಾಗಿ AI', selectLang: 'ಭಾಷೆ ಆಯ್ಕೆ:',
+        placeholder: 'ಉದಾ: ಟೊಮೆಟೊ ಬೆಳೆಗೆ ಯಾವ ಗೊಬ್ಬರ?',
+    },
+    hi: {
+        home: 'होम', askAI: 'AI से पूछें - कोई भी सवाल', mandiPrices: 'आज की मंडी कीमतें',
+        cropPlanner: 'फसल योजना', govtSchemes: 'सरकारी योजनाएं (PM-किसान)', farmTips: 'खेती की टिप्स',
+        jioMsg: 'JioPhone इस्तेमाल कर रहे हैं?', jioDesc: 'यह पेज सभी फोन पर काम करता है। अपना खेती का सवाल टाइप करें।',
+        backMenu: '← मेनू पर वापस', askTitle: 'BELAI AI से पूछें', askDesc: 'अपना सवाल टाइप करें',
+        yourLang: 'आपकी भाषा:', yourQ: 'आपका सवाल:', getAnswer: 'AI जवाब पाएं ►',
+        quickQ: 'जल्दी सवाल:', yourQuestion: 'आपका सवाल:', belaiAnswer: 'BELAI जवाब:',
+        askAnother: 'और सवाल पूछें:', askAgain: 'फिर पूछें ►', typeNext: 'अगला सवाल टाइप करें...',
+        enterQ: 'कृपया पहले सवाल टाइप करें।', tryAgain: 'फिर कोशिश करें',
+        aiForFarmers: 'किसानों के लिए AI', selectLang: 'भाषा चुनें:',
+        placeholder: 'उदा: टमाटर के लिए कौन सा खाद?',
+    },
+    te: {
+        home: 'హోమ్', askAI: 'AI ని అడగండి - ఏదైనా ప్రశ్న', mandiPrices: 'నేటి మండి ధరలు',
+        cropPlanner: 'పంట ప్లానర్', govtSchemes: 'ప్రభుత్వ పథకాలు (PM-కిసాన్)', farmTips: 'వ్యవసాయ చిట్కాలు',
+        jioMsg: 'JioPhone వాడుతున్నారా?', jioDesc: 'ఈ పేజీ అన్ని ఫోన్‌లలో పనిచేస్తుంది. మీ వ్యవసాయ ప్రశ్న టైప్ చేయండి.',
+        backMenu: '← మెనూకి తిరిగి', askTitle: 'BELAI AI ని అడగండి', askDesc: 'మీ ప్రశ్నను టైప్ చేయండి',
+        yourLang: 'మీ భాష:', yourQ: 'మీ ప్రశ్న:', getAnswer: 'AI సమాధానం పొందండి ►',
+        quickQ: 'త్వరిత ప్రశ్నలు:', yourQuestion: 'మీ ప్రశ్న:', belaiAnswer: 'BELAI సమాధానం:',
+        askAnother: 'మరొక ప్రశ్న అడగండి:', askAgain: 'మళ్ళీ అడగండి ►', typeNext: 'తదుపరి ప్రశ్న టైప్ చేయండి...',
+        enterQ: 'దయచేసి ముందుగా ప్రశ్న టైప్ చేయండి.', tryAgain: 'మళ్ళీ ప్రయత్నించండి',
+        aiForFarmers: 'రైతుల కోసం AI', selectLang: 'భాష ఎంచుకోండి:',
+        placeholder: 'ఉదా: టమాటో పంటకు ఏ ఎరువు?',
+    },
+    ta: {
+        home: 'முகப்பு', askAI: 'AI யிடம் கேளுங்கள்', mandiPrices: 'இன்றைய மண்டி விலைகள்',
+        cropPlanner: 'பயிர் திட்டமிடல்', govtSchemes: 'அரசு திட்டங்கள் (PM-கிசான்)', farmTips: 'விவசாய குறிப்புகள்',
+        jioMsg: 'JioPhone பயன்படுத்துகிறீர்களா?', jioDesc: 'இந்த பக்கம் அனைத்து போன்களிலும் வேலை செய்யும். உங்கள் விவசாய கேள்வியை டைப் செய்யுங்கள்.',
+        backMenu: '← மெனுவுக்கு திரும்பு', askTitle: 'BELAI AI யிடம் கேளுங்கள்', askDesc: 'உங்கள் கேள்வியை டைப் செய்யுங்கள்',
+        yourLang: 'உங்கள் மொழி:', yourQ: 'உங்கள் கேள்வி:', getAnswer: 'AI பதில் பெறுங்கள் ►',
+        quickQ: 'விரைவு கேள்விகள்:', yourQuestion: 'உங்கள் கேள்வி:', belaiAnswer: 'BELAI பதில்:',
+        askAnother: 'மற்றொரு கேள்வி கேளுங்கள்:', askAgain: 'மீண்டும் கேளுங்கள் ►', typeNext: 'அடுத்த கேள்வியை டைப் செய்...',
+        enterQ: 'தயவுசெய்து முதலில் கேள்வியை டைப் செய்யுங்கள்.', tryAgain: 'மீண்டும் முயற்சிக்கவும்',
+        aiForFarmers: 'விவசாயிகளுக்கான AI', selectLang: 'மொழியை தேர்ந்தெடுக்கவும்:',
+        placeholder: 'உதா: தக்காளிக்கு என்ன உரம்?',
+    },
+};
+function t(lang, key) { return (UI[lang] && UI[lang][key]) || UI.en[key] || key; }
+
+// ── /lite  — Home ─────────────────────────────────────────
+app.get('/lite', (req, res) => {
+    const lang = req.query.lang || 'en';
+    const langLinks = ['en','kn','hi','te','ta'].map(l => {
+        const names = {en:'English',kn:'ಕನ್ನಡ',hi:'हिन्दी',te:'తెలుగు',ta:'தமிழ்'};
+        const active = l === lang ? 'font-weight:bold;background:#2a4a2c;' : '';
+        return `<a href="/lite?lang=${l}" style="display:inline-block;padding:5px 10px;margin:2px;border:1px solid #3a6a3c;color:#f5c842;font-size:12px;${active}">${names[l]}</a>`;
+    }).join('');
+
+    res.type('text/html').send(liteShell(t(lang,'home'), `
+<div style="text-align:center;margin-bottom:10px">
+  <span style="font-size:11px;color:#88aa88">${t(lang,'selectLang')}</span><br/>
+  ${langLinks}
+</div>
 <div class="menu">
-  <a class="mi" href="/lite/ask">&#129302; Ask AI - Any Question <span class="ar">&#9658;</span></a>
-  <a class="mi" href="/lite/prices">&#128200; Mandi Prices Today <span class="ar">&#9658;</span></a>
-  <a class="mi" href="/lite/planner">&#127807; Crop Planner <span class="ar">&#9658;</span></a>
-  <a class="mi" href="/lite/schemes">&#127963; Govt Schemes (PM-Kisan) <span class="ar">&#9658;</span></a>
-  <a class="mi" href="/lite/tips">&#9889; Quick Farming Tips <span class="ar">&#9658;</span></a>
+  <a class="mi" href="/lite/ask?lang=${lang}">&#129302; ${t(lang,'askAI')} <span class="ar">&#9658;</span></a>
+  <a class="mi" href="/lite/prices?lang=${lang}">&#128200; ${t(lang,'mandiPrices')} <span class="ar">&#9658;</span></a>
+  <a class="mi" href="/lite/planner?lang=${lang}">&#127807; ${t(lang,'cropPlanner')} <span class="ar">&#9658;</span></a>
+  <a class="mi" href="/lite/schemes?lang=${lang}">&#127963; ${t(lang,'govtSchemes')} <span class="ar">&#9658;</span></a>
+  <a class="mi" href="/lite/tips?lang=${lang}">&#9889; ${t(lang,'farmTips')} <span class="ar">&#9658;</span></a>
 </div>
 <div class="card">
-  <b class="gd">Using Karbon K9 / JioPhone?</b><br/>
-  This page works on ALL phones. No app needed.<br/>
-  Type your farming question and get AI advice instantly.
+  <b class="gd">${t(lang,'jioMsg')}</b><br/>
+  ${t(lang,'jioDesc')}
 </div>
 <div class="card">
   <b>PM-Kisan:</b> Rs.6000/year &bull;
@@ -865,9 +941,10 @@ app.get('/lite', (_req, res) => {
 
 // ── /lite/ask  — AI Chat Form ─────────────────────────────
 app.get('/lite/ask', (req, res) => {
+    const lang = req.query.lang || 'en';
     const langOpts = ['en','kn','hi','te','ta'].map(l => {
         const names = {en:'English',kn:'Kannada',hi:'Hindi',te:'Telugu',ta:'Tamil'};
-        return `<option value="${l}">${names[l]}</option>`;
+        return `<option value="${l}"${l===lang?' selected':''}>${names[l]}</option>`;
     }).join('');
     const quickLinks = [
         ['PM-Kisan scheme details','PM-Kisan scheme details'],
@@ -876,22 +953,23 @@ app.get('/lite/ask', (req, res) => {
         ['Urea fertilizer dosage','Urea fertilizer dosage per acre'],
         ['Drip irrigation cost','Drip irrigation cost and subsidy'],
     ].map(([label,q]) =>
-        `<a href="/lite/ask?q=${encodeURIComponent(q)}" style="display:inline-block;background:#1a3e1c;border:1px solid #2a5a2c;color:#a3e635;font-size:11px;padding:4px 7px;margin:2px 2px 2px 0">${label}</a>`
+        `<a href="/lite/ask?lang=${lang}&q=${encodeURIComponent(q)}" style="display:inline-block;background:#1a3e1c;border:1px solid #2a5a2c;color:#a3e635;font-size:11px;padding:4px 7px;margin:2px 2px 2px 0">${label}</a>`
     ).join('');
 
-    res.type('text/html').send(liteShell('Ask AI', `
-<a class="back" href="/lite">&#8592; Back to Menu</a>
-<h2>&#129302; Ask BELAI AI</h2>
-<p style="font-size:12px;color:#88cc88;margin-bottom:8px">Type your question in any language</p>
-<p style="font-size:11px;color:#88aa88;margin-bottom:6px">Quick questions:</p>
+    res.type('text/html').send(liteShell(t(lang,'askTitle'), `
+<a class="back" href="/lite?lang=${lang}">${t(lang,'backMenu')}</a>
+<h2>&#129302; ${t(lang,'askTitle')}</h2>
+<p style="font-size:12px;color:#88cc88;margin-bottom:8px">${t(lang,'askDesc')}</p>
+<p style="font-size:11px;color:#88aa88;margin-bottom:6px">${t(lang,'quickQ')}</p>
 ${quickLinks}
 <hr/>
 <form method="POST" action="/lite/ask">
-  <label>Your Language:</label>
+  <input type="hidden" name="lang" value="${lang}"/>
+  <label>${t(lang,'yourLang')}</label>
   <select name="lang">${langOpts}</select>
-  <label>Your Question:</label>
-  <textarea name="q" rows="4" placeholder="e.g. What fertilizer for tomato crop?">${req.query.q ? req.query.q : ''}</textarea>
-  <input type="submit" value="Get AI Answer &#9658;"/>
+  <label>${t(lang,'yourQ')}</label>
+  <textarea name="q" rows="4" placeholder="${t(lang,'placeholder')}">${req.query.q ? req.query.q : ''}</textarea>
+  <input type="submit" value="${t(lang,'getAnswer')}"/>
 </form>`));
 });
 
@@ -899,10 +977,10 @@ app.post('/lite/ask', express.urlencoded({ extended: false }), async (req, res) 
     const lang = req.body.lang || 'en';
     const question = (req.body.q || '').trim();
     if (!question) {
-        return res.type('text/html').send(liteShell('Ask AI', `
-<a class="back" href="/lite">&#8592; Back to Menu</a>
-<p class="err">Please type a question first.</p>
-<a class="back" href="/lite/ask">Try Again</a>`));
+        return res.type('text/html').send(liteShell(t(lang,'askTitle'), `
+<a class="back" href="/lite?lang=${lang}">${t(lang,'backMenu')}</a>
+<p class="err">${t(lang,'enterQ')}</p>
+<a class="back" href="/lite/ask?lang=${lang}">${t(lang,'tryAgain')}</a>`));
     }
     let reply = '';
     try {
@@ -930,16 +1008,16 @@ app.post('/lite/ask', express.urlencoded({ extended: false }), async (req, res) 
         return `<option value="${l}"${l===lang?' selected':''}>${names[l]}</option>`;
     }).join('');
 
-    res.type('text/html').send(liteShell('AI Answer', `
-<a class="back" href="/lite">&#8592; Back to Menu</a>
-<div class="you"><b>Your question:</b><br/>${question.replace(/</g,'&lt;')}</div>
-<div class="ans"><b class="gd">&#129302; BELAI Answer:</b><br/><br/>${reply.replace(/\n/g,'<br/>')}</div>
+    res.type('text/html').send(liteShell(t(lang,'belaiAnswer'), `
+<a class="back" href="/lite?lang=${lang}">${t(lang,'backMenu')}</a>
+<div class="you"><b>${t(lang,'yourQuestion')}</b><br/>${question.replace(/</g,'&lt;')}</div>
+<div class="ans"><b class="gd">&#129302; ${t(lang,'belaiAnswer')}</b><br/><br/>${reply.replace(/\n/g,'<br/>')}</div>
 <hr/>
-<h3>Ask another question:</h3>
+<h3>${t(lang,'askAnother')}</h3>
 <form method="POST" action="/lite/ask">
   <select name="lang">${langOpts}</select>
-  <textarea name="q" rows="3" placeholder="Type next question..."></textarea>
-  <input type="submit" value="Ask Again &#9658;"/>
+  <textarea name="q" rows="3" placeholder="${t(lang,'typeNext')}"></textarea>
+  <input type="submit" value="${t(lang,'askAgain')}"/>
 </form>`));
 });
 
