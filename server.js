@@ -3,6 +3,8 @@ const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
+const multer = require('multer');
+const upload = multer();
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -963,23 +965,38 @@ app.get('/lite/ask', (req, res) => {
 <p style="font-size:11px;color:#88aa88;margin-bottom:6px">${t(lang,'quickQ')}</p>
 ${quickLinks}
 <hr/>
-<form method="POST" action="/lite/ask">
+<form method="POST" action="/lite/ask" enctype="multipart/form-data">
   <input type="hidden" name="lang" value="${lang}"/>
   <label>${t(lang,'yourLang')}</label>
   <select name="lang">${langOpts}</select>
-  <label>${t(lang,'yourQ')}</label>
+  <label>${t(lang,'yourQ')} (Type or 🎤 Record)</label>
+  <input type="file" name="audio" accept="audio/*" capture="microphone" style="margin-bottom:8px" />
   <textarea name="q" rows="4" placeholder="${t(lang,'placeholder')}">${req.query.q ? req.query.q : ''}</textarea>
   <input type="submit" value="${t(lang,'getAnswer')}"/>
 </form>`));
 });
 
-app.post('/lite/ask', express.urlencoded({ extended: false }), async (req, res) => {
+app.post('/lite/ask', upload.single('audio'), async (req, res) => {
     const lang = req.body.lang || 'en';
-    const question = (req.body.q || '').trim();
+    let question = (req.body.q || '').trim();
+
+    // If an audio file was recorded on JioPhone, transcribe it
+    if (req.file) {
+        try {
+            const transcribed = await whisperTranscribe(req.file.buffer, req.file.mimetype || 'audio/wav');
+            if (transcribed && transcribed.trim()) {
+                question = transcribed.trim() + (question ? ` (Additional text: ${question})` : '');
+            }
+        } catch (err) {
+            console.error("Lite Whisper Error:", err);
+            // silently fall back to text if transcription fails
+        }
+    }
+
     if (!question) {
         return res.type('text/html').send(liteShell(t(lang,'askTitle'), `
 <a class="back" href="/lite?lang=${lang}">${t(lang,'backMenu')}</a>
-<p class="err">${t(lang,'enterQ')}</p>
+<p class="err">${t(lang,'enterQ')} or record voice.</p>
 <a class="back" href="/lite/ask?lang=${lang}">${t(lang,'tryAgain')}</a>`));
     }
     let reply = '';
@@ -1030,8 +1047,9 @@ app.post('/lite/ask', express.urlencoded({ extended: false }), async (req, res) 
 </div>
 <hr/>
 <h3>${t(lang,'askAnother')}</h3>
-<form method="POST" action="/lite/ask">
+<form method="POST" action="/lite/ask" enctype="multipart/form-data">
   <select name="lang">${langOpts}</select>
+  <input type="file" name="audio" accept="audio/*" capture="microphone" style="margin-bottom:8px" />
   <textarea name="q" rows="3" placeholder="${t(lang,'typeNext')}"></textarea>
   <input type="submit" value="${t(lang,'askAgain')}"/>
 </form>`));
