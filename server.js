@@ -1343,3 +1343,4 @@ app.listen(PORT, () => {
     console.log(`  WhatsApp Bot    → POST /api/whatsapp`);
     console.log(`  MongoDB → ${MONGO_URI ? 'configured' : 'NOT SET (add MONGO_URI to .env)'}\n`);
 });
+
